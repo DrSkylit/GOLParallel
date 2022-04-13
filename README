@@ -1,0 +1,3 @@
+Game Of Life Parallel
+How to Compile so far:
+mpic++ main.cpp Row/Row.cpp -IRow/
