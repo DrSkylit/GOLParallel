@@ -98,6 +98,33 @@ int** ghostToGrid(int** grid, int* topGhostRow, int* bottomGhostRow, int rows, i
     return grid;
 }
 
+int** fillRows(int** currentGrid, int rank, int size, int rows, int columns){
+	Row bottomGhostRow(columns);
+	Row topGhostRow(columns);
+
+	bottomGhostRow.createGhostRow(currentGrid, 1);
+	topGhostRow.createGhostRow(currentGrid, rows-2);
+	// distributed memory is defined send and recive ghost rows
+	// distributed memory is not defined not extra tasks is needed
+	if(size > 1){
+		int nextLowestRank = getNextLowestRank(rank,size);
+		MPI_Send(bottomGhostRow.getGhostRow(),columns,MPI_INT,nextLowestRank,0,MCW);
+		
+		int nextHighestRank = getNextHighestRank(rank,size);
+		MPI_Send(topGhostRow.getGhostRow(),columns,MPI_INT,nextHighestRank,1,MCW);
+
+		int topSource = getTopSource(rank,size);
+		int bottomSource = getBottomSource(rank,size);
+
+		MPI_Recv(bottomGhostRow.getGhostRow(),columns,MPI_INT,topSource,0,MCW,MPI_STATUS_IGNORE);
+		MPI_Recv(topGhostRow.getGhostRow(),columns,MPI_INT,bottomSource,1,MCW,MPI_STATUS_IGNORE);
+	}
+
+	currentGrid = ghostToGrid(currentGrid,topGhostRow.getGhostRow(),bottomGhostRow.getGhostRow(),rows,columns);
+
+	return currentGrid;
+}
+
 int main(int argc, char *argv[]){
 	int rank;
 	int size;
@@ -129,33 +156,8 @@ int main(int argc, char *argv[]){
 	nextGrid = copyGrid(nextGrid,currentGrid,rows,columns);
 
 	for(int i = 0; i < TIMESTEPS; i++){
-		Row bottomGhostRow(columns);
-		Row topGhostRow(columns);
-		int nextLowestRank = 0;
-		// distributed memory is defined
-		if(size > 1){
-			nextLowestRank = getNextLowestRank(rank,size);
-			bottomGhostRow.createGhostRow(currentGrid, 1);
-			MPI_Send(bottomGhostRow.getGhostRow(),columns,MPI_INT,nextLowestRank,0,MCW);
-			
-			int nextHighestRank = getNextHighestRank(rank,size);
-			topGhostRow.createGhostRow(currentGrid, rows-2);
-			MPI_Send(topGhostRow.getGhostRow(),columns,MPI_INT,nextHighestRank,1,MCW);
-
-			int topSource = getTopSource(rank,size);
-			int bottomSource = getBottomSource(rank,size);
-
-			MPI_Recv(bottomGhostRow.getGhostRow(),columns,MPI_INT,topSource,0,MCW,MPI_STATUS_IGNORE);
-			MPI_Recv(topGhostRow.getGhostRow(),columns,MPI_INT,bottomSource,1,MCW,MPI_STATUS_IGNORE);
-
-			currentGrid = ghostToGrid(currentGrid,topGhostRow.getGhostRow(),bottomGhostRow.getGhostRow(),rows,columns);
-
-		}else{
-			// distributed memory is not defined
-			bottomGhostRow.createGhostRow(currentGrid, 1);
-			topGhostRow.createGhostRow(currentGrid, rows-2);
-			currentGrid = ghostToGrid(currentGrid,topGhostRow.getGhostRow(),bottomGhostRow.getGhostRow(),rows,columns);
-		}
+		currentGrid = fillRows(currentGrid, rank, size, rows, columns);
+		// TODO fill columns with ghost columns
 	}
 
 	MPI_Finalize();
