@@ -3,6 +3,7 @@
 #include <ostream>
 #include <iostream>
 #include <mpi.h>
+#include <Row.hpp>
 
 #define MCW MPI_COMM_WORLD
 
@@ -68,20 +69,20 @@ int getNextHighestRank(int rank, int size){
 	return nextHighestRank;
 }
 
-int* getRow(int **grid, int rows, int columns){
-	int *arr;
-	arr = new int[columns];
-	for(int i = 0; i < columns; i++){
-		arr[i] = grid[rows][i];
+int getTopSource(int rank, int size){
+	int source = rank+1;
+	if(source == size){
+		source = 0;
 	}
-	return arr;
+	return source;
 }
 
-void printRow(int *row,int columns){
-	for(int i = 0; i < columns;i++){
-		std::cout << row[i] << " ";
+int getBottomSource(int rank, int size){
+	int source = rank-1;
+	if(source == -1){
+		source = size-1;
 	}
-	std::cout << "" << std::endl;
+	return source;
 }
 
 int** ghostToGrid(int** grid, int* topGhostRow, int* bottomGhostRow, int rows, int columns){
@@ -105,8 +106,10 @@ int main(int argc, char *argv[]){
 
 	initializeMpi(argc, argv,rank,size);
 	srand(time(NULL) + rank);
+
 	int rows = (ROWCOUNT/size);
 	int columns = 0;
+
 	// give the remaider of the work to the last proccess
 	if(rank == size-1){
 		int rowRemainder = ROWCOUNT%size;
@@ -116,8 +119,8 @@ int main(int argc, char *argv[]){
 	// add two for the ghost rows
 	rows = rows +2;
 	columns = COLUMNCOUNT+2;
+	
 	int **currentGrid;
-
 	currentGrid = initGrid(currentGrid,rows,columns);
 	currentGrid = fillGrid(currentGrid,rows,columns);
 
@@ -126,48 +129,32 @@ int main(int argc, char *argv[]){
 	nextGrid = copyGrid(nextGrid,currentGrid,rows,columns);
 
 	for(int i = 0; i < TIMESTEPS; i++){
+		Row bottomGhostRow(columns);
+		Row topGhostRow(columns);
 		int nextLowestRank = 0;
 		// distributed memory is defined
 		if(size > 1){
 			nextLowestRank = getNextLowestRank(rank,size);
-			// get second from top
-			int *bottomGhostRow;
-			bottomGhostRow = getRow(currentGrid, 1,columns);
-			//send to next lowest rank
-			MPI_Send(bottomGhostRow,columns,MPI_INT,nextLowestRank,0,MCW);
+			bottomGhostRow.createGhostRow(currentGrid, 1);
+			MPI_Send(bottomGhostRow.getGhostRow(),columns,MPI_INT,nextLowestRank,0,MCW);
 			
 			int nextHighestRank = getNextHighestRank(rank,size);
-			int *topGhostRow;
-			topGhostRow = getRow(currentGrid, rows-2,columns);
-			MPI_Send(topGhostRow,columns,MPI_INT,nextHighestRank,1,MCW);
+			topGhostRow.createGhostRow(currentGrid, rows-2);
+			MPI_Send(topGhostRow.getGhostRow(),columns,MPI_INT,nextHighestRank,1,MCW);
 
-			int topSource = rank+1;
-			if(topSource == size){
-				topSource = 0;
-			}
+			int topSource = getTopSource(rank,size);
+			int bottomSource = getBottomSource(rank,size);
 
-			int bottomSource = rank-1;
-			if(bottomSource == -1){
-				bottomSource = size-1;
-			}
+			MPI_Recv(bottomGhostRow.getGhostRow(),columns,MPI_INT,topSource,0,MCW,MPI_STATUS_IGNORE);
+			MPI_Recv(topGhostRow.getGhostRow(),columns,MPI_INT,bottomSource,1,MCW,MPI_STATUS_IGNORE);
 
-			MPI_Recv(bottomGhostRow,columns,MPI_INT,topSource,0,MCW,MPI_STATUS_IGNORE);
-			MPI_Recv(topGhostRow,columns,MPI_INT,bottomSource,1,MCW,MPI_STATUS_IGNORE);
-
-			std::cout << "rank: " << rank << std::endl;
-			std::cout << "Grid:";
-			printGrid(currentGrid,rows,columns);
-			std::cout << "Top Ghost Row:";
-			printRow(topGhostRow,columns);
-			std::cout << "Bottom Ghost Row:";
-			printRow(bottomGhostRow,columns);
-			currentGrid = ghostToGrid(currentGrid,topGhostRow,bottomGhostRow,rows,columns);
-			std::cout << "Completed Grid:";
-			printGrid(currentGrid,rows,columns);
+			currentGrid = ghostToGrid(currentGrid,topGhostRow.getGhostRow(),bottomGhostRow.getGhostRow(),rows,columns);
 
 		}else{
 			// distributed memory is not defined
-
+			bottomGhostRow.createGhostRow(currentGrid, 1);
+			topGhostRow.createGhostRow(currentGrid, rows-2);
+			currentGrid = ghostToGrid(currentGrid,topGhostRow.getGhostRow(),bottomGhostRow.getGhostRow(),rows,columns);
 		}
 	}
 
