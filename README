@@ -1,3 +1,6 @@
-Game Of Life Parallel
-How to Compile so far:
-mpic++ main.cpp Row/Row.cpp -Iincludes/
+# Game Of Life In Parallel #
+### How to Compile ###
+mpic++ main.cpp Row/Row.cpp Column/Column.cpp -Iincludes/
+mpirun -np 4 a.out
+
+-np is the amount of processes
