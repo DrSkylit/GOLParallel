@@ -192,7 +192,6 @@ int main(int argc, char *argv[]){
 		int rowRemainder = ROWCOUNT%size;
 		rows = rows+rowRemainder;
 	}
-
 	// add two for the ghost rows and columns
 	rows = rows +2;
 	columns = COLUMNCOUNT+2;
@@ -212,18 +211,15 @@ int main(int argc, char *argv[]){
 		MPI_Barrier(MCW);
 
 		if(rank !=0){
-			// processes send their grid to 0 
-			// std::cout << "rank: " << rank << std::endl;
-			// printProcessGrid(currentGrid,rows,columns);
 			// convert 2d pointer to 2d array
-			int bk[ROWCOUNT][COLUMNCOUNT] = {};
+			int bk[(rows-2)][COLUMNCOUNT] = {};
 			for(int i = 1; i < rows-1; i++){
-					for(int j = 1; j < columns-1; j++){
-						bk[i][j] = currentGrid[i][j];
-					}
+				for(int j = 1; j < columns-1; j++){
+					bk[i-1][j-1] = currentGrid[i][j];
 				}
+			}
 
-			MPI_Send(bk,rows*columns,MPI_INT,0,3,MCW);
+			MPI_Send(bk,(rows-2)*COLUMNCOUNT,MPI_INT,0,3,MCW);
 		}else{
 			// rank 0 recives grids from other proccesses and organizes them
 			// add a count varible to keep track of the amount of ranks that have been proccesed 
@@ -234,58 +230,66 @@ int main(int argc, char *argv[]){
 			// creates a new array that keeps track of ranks row sizes
 			int rankRowSizes[size] = {};
 			// sets 0 to its row size
-			rankRowSizes[0] = rows; 
+			rankRowSizes[0] = (rows-2); 
 			
 			// copys rank zero's actual grid (no ghost rows or columns) to the array
 			for(int i = 1; i < rows-1; i++){
 				for(int j = 1; j < columns-1; j++){
-					arr[0][i][j] = currentGrid[i][j];
+					arr[0][i-1][j-1] = currentGrid[i][j];
 				}
 			}
 			// infinitly loop to make sure we recive all the ranks data
-			while(1){ 
-				count ++;
-				int sendSize = 0;
-				MPI_Probe(MPI_ANY_SOURCE, 3, MPI_COMM_WORLD, &status);
-				// gets the size of the data getting recived
-				MPI_Get_count(&status, MPI_INT, &sendSize);
-				// gets the senders rank;
-				int sendRank = status.MPI_SOURCE;
-				// gets the rows and columns of the data getting recived
-				int y = COLUMNCOUNT+2;
-				int x = sendSize/(COLUMNCOUNT+2);
-				// creates a new array so we can recive the data
-				int actualGrid[x][y] = {};
-				// fills the recived data row size
-				rankRowSizes[sendRank] = x;
-				// Finally we recive the data
-				MPI_Recv(actualGrid,sendSize,MPI_INT,status.MPI_SOURCE,3,MCW,&status);
-
-				// copys the data in the correct order 
-				for(int i = 1; i < x-1; i++){
-					for(int j = 1; j < y-1; j++){
-						arr[sendRank][i][j] = actualGrid[i][j];
+			if(size > 1){
+				while(1){ 
+					count ++;
+					int sendSize = 0;
+					MPI_Probe(MPI_ANY_SOURCE, 3, MPI_COMM_WORLD, &status);
+					// gets the size of the data getting recived
+					MPI_Get_count(&status, MPI_INT, &sendSize);
+					// gets the senders rank;
+					int sendRank = status.MPI_SOURCE;
+					// gets the rows and columns of the data getting recived
+					int y = COLUMNCOUNT;
+					int x = sendSize/(COLUMNCOUNT);
+					// creates a new array so we can recive the data
+					int actualGrid[x][y] = {};
+					// fills the recived data row size
+					rankRowSizes[sendRank] = x;
+					// Finally we recive the data
+					MPI_Recv(actualGrid,sendSize,MPI_INT,sendRank,3,MCW,&status);
+					// copys the data in the correct order 
+					for(int i = 0; i < x; i++){
+						for(int j = 0; j < y; j++){
+							arr[sendRank][i][j] = actualGrid[i][j];
+						}
 					}
-				}
-				// once all the ranks have been proccesed we break out of our loop
-				if(count == size){
-					break;
+					// once all the ranks have been proccesed we break out of our loop
+					if(count == size){
+						break;
+					}
 				}
 			}
 			std::cout << "Current Grid" << std::endl;
 			// print the current grid
-			for (int rank = 0; rank < size; rank++){
-				for(int i = 1; i < rankRowSizes[rank]-1; i++){
-					for(int j = 1; j < COLUMNCOUNT+1; j++){
-						std::cout << arr[rank][i][j] << " ";
+			for (int ranks = 0; ranks < size; ranks++){
+				for(int i = 0; i < rankRowSizes[ranks]; i++){
+					for(int j = 0; j < COLUMNCOUNT; j++){
+						std::cout << arr[ranks][i][j] << " ";
 					}
 					std::cout << "" << std::endl;
 				}
 			}
+
+			// // loop though the columns
+			// for(int i = 0; i < ROWCOUNT+1; i++){
+			// 	for(int j = 0; j < COLUMNCOUNT+1; i++){
+			// 		// add threads here 
+			// 		#pragma omp	parallel	for
+
+			// 	}
+			// }
 		}
-
 	}
-
 	MPI_Finalize();
 }
 
